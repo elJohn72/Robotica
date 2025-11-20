@@ -23,8 +23,8 @@ const float DIST_PRECAUCION  = 200.0;
 // ==== UART GPS (NEO-6M) ====
 // En el PCB: TXD del GPS -> D14 (RXD2), RXD del GPS -> D4 (TXD2)
 HardwareSerial SerialGPS(1);    // UART1
-const int GPS_RX = 4;          // ESP32 GPIO14 recibe desde TX del GPS
-const int GPS_TX = 14;           // ESP32 GPIO4 transmite hacia RX del GPS
+const int GPS_RX = 4;          // ESP32 GPIO4 recibe desde TX del GPS
+const int GPS_TX = 14;           // ESP32 GPIO14 transmite hacia RX del GPS
 
 // ==== UART SIM800L ====
 // En el PCB: TXD del SIM800L -> GPIO16 (RX2), RXD del SIM800L -> GPIO17 (TX2)
