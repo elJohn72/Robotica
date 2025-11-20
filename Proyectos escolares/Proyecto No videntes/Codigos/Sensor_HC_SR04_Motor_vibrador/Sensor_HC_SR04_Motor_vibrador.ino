@@ -1,130 +1,183 @@
 /****************************************************
- * SmartVest - Etapa 2 (SOS + GPS + SIM800L)
- * Ultrasonido + Buzzer + Vibrador
- * + GPS NEO-6M (TinyGPSPlus)
- * + SIM800L (SMS SOS con ubicación)
+ * SmartVest - Versión previa a ESP32-CAM
+ * 
+ * Funciones:
+ *  - Ultrasonido HC-SR04 -> Buzzer + Motor vibrador
+ *  - GPS NEO-6M por UART1
+ *  - SIM800L por UART2
+ *  - Botón SOS en D27: envía SMS de alerta
+ *
+ *  Placa: ESP32 DevKit
+ *  Monitor Serie: 115200 baud
  ****************************************************/
 
 #include <HardwareSerial.h>
-#include <TinyGPSPlus.h>
 
-// ==== PINES ULTRASONIDO / ALERTAS ====
-const int PIN_TRIG      = 5;
-const int PIN_ECHO      = 18;
-const int PIN_BUZZER    = 13;
-const int PIN_VIBRADOR  = 32;
+// ================== PINES ULTRASONIDO / ALERTAS ==================
+const int PIN_TRIG      = 5;    // TRIG HC-SR04 -> GPIO5
+const int PIN_ECHO      = 18;   // ECHO HC-SR04 -> GPIO18 (con divisor)
+const int PIN_BUZZER    = 13;   // BUZZER -> GPIO13
+const int PIN_VIBRADOR  = 32;   // VIBRADOR -> GPIO32
 
-// ==== BOTÓN SOS ====
-const int PIN_SOS       = 33;  // Ajusta si usaste otro pin
+// Parámetros del sensor ultra
+const unsigned long TIMEOUT_ULTRA = 30000UL; // 30 ms (≈5m)
 
-// ==== UMBRALES ====
-const unsigned long TIMEOUT_ULTRA = 30000UL;
+// Umbrales de distancia (cm)
 const float DIST_PELIGRO     = 40.0;
 const float DIST_ALERTA      = 100.0;
 const float DIST_PRECAUCION  = 200.0;
 
-// ===== GPS NEO-6M =====
-// Según TU código final:
-HardwareSerial SerialGPS(1);
-const int GPS_RX = 4;      // ESP32 <- TX GPS
-const int GPS_TX = 14;     // ESP32 -> RX GPS
+// ================== PINES GPS (UART1) ==================
+HardwareSerial SerialGPS(1);    // UART1
 
-TinyGPSPlus gps;
+// Según tu última decisión:
+const int GPS_RX = 4;           // GPIO4  <- TX del GPS NEO-6M
+const int GPS_TX = 14;          // GPIO14 -> RX del GPS NEO-6M
 
-// ===== SIM800L =====
-HardwareSerial SerialGSM(2);
-const int GSM_RX = 16;     // ESP32 <- TX SIM800L
-const int GSM_TX = 17;     // ESP32 -> RX SIM800L
+// ================== PINES SIM800L (UART2) ==================
+HardwareSerial SerialGSM(2);    // UART2
 
-// Destino del mensaje SOS
-const char NUM_DESTINO[] = "+593963930791";
+const int GSM_RX = 16;          // GPIO16 <- TX del SIM800L
+const int GSM_TX = 17;          // GPIO17 -> RX del SIM800L
 
-// ==== ESTRUCTURA DE PATRÓN ====
+// Número destino para SOS
+const char NUM_DESTINO_SOS[] = "+593963930791";
+
+// ================== BOTÓN SOS ==================
+const int PIN_SOS = 27;         // Botón SOS -> GPIO27 (a GND, con INPUT_PULLUP)
+
+// ================== PATRÓN DE ALERTA ==================
 struct PatronAlerta {
-  unsigned long periodo;
-  unsigned long onTime;
+  unsigned long periodo;   // ciclo total (ms)
+  unsigned long onTime;    // tiempo ON dentro del ciclo (ms)
   bool activo;
 };
 
 PatronAlerta patronActual = {0, 0, false};
 unsigned long tInicioPatron = 0;
 float distanciaCM = 0.0;
+bool sosPrevEstado = false;
 
-// ==== Estado del SOS ====
-bool sosActivo = false;
-bool smsEnviado = false;
-
-//
 // ================== PROTOTIPOS ==================
-//
 float medirDistanciaCM();
-void actualizarPatronPorDistancia(float d);
-void aplicarPatron();
-void procesarGPS();
-bool sim800_enviarComando(const char* cmd, const char* resp, unsigned long timeout);
-bool sim800_enviarSMS(String msg);
-void manejarSOS();
+void  actualizarPatronPorDistancia(float d);
+void  aplicarPatron();
 
-//
-// ================== SETUP ==================
-//
+bool  sim800_enviarComando(const char* cmd, const char* respEsperada, unsigned long timeout);
+bool  sim800_enviarSMS(const String &mensaje);
+
+// =======================================================
+// ======================= SETUP =========================
+// =======================================================
 void setup() {
   Serial.begin(115200);
-  delay(1500);
-  Serial.println("SmartVest - Etapa 2 (SOS + GPS + SIM800L)");
+  delay(1000);
+  Serial.println();
+  Serial.println("===== SmartVest - Version previa a ESP32-CAM =====");
 
+  // --- Pines ultrasonido / alertas ---
   pinMode(PIN_TRIG, OUTPUT);
   pinMode(PIN_ECHO, INPUT);
   pinMode(PIN_BUZZER, OUTPUT);
   pinMode(PIN_VIBRADOR, OUTPUT);
-  pinMode(PIN_SOS, INPUT_PULLUP);
 
   digitalWrite(PIN_TRIG, LOW);
   digitalWrite(PIN_BUZZER, LOW);
   digitalWrite(PIN_VIBRADOR, LOW);
 
-  // GPS
-  SerialGPS.begin(9600, SERIAL_8N1, GPS_RX, GPS_TX);
+  // --- Botón SOS ---
+  pinMode(PIN_SOS, INPUT_PULLUP);
 
-  // SIM800L
+  // --- UART GPS (NEO-6M) ---
+  SerialGPS.begin(9600, SERIAL_8N1, GPS_RX, GPS_TX);
+  Serial.println("GPS NEO-6M inicializado en UART1.");
+  Serial.print("  RX1 = GPIO");
+  Serial.print(GPS_RX);
+  Serial.print("  (desde TX GPS), TX1 = GPIO");
+  Serial.println(GPS_TX);
+
+  // --- UART SIM800L ---
   SerialGSM.begin(9600, SERIAL_8N1, GSM_RX, GSM_TX);
-  delay(2000);
-  sim800_enviarComando("AT", "OK", 2000);
-  sim800_enviarComando("ATE0", "OK", 2000);
-  sim800_enviarComando("AT+CMGF=1", "OK", 2000);
+  Serial.println("SIM800L inicializado en UART2.");
+  Serial.print("  RX2 = GPIO");
+  Serial.print(GSM_RX);
+  Serial.print("  (desde TX SIM800L), TX2 = GPIO");
+  Serial.println(GSM_TX);
+
+  delay(2000); // tiempo para que el SIM800L arranque
+
+  Serial.println("\nInicializando SIM800L...");
+  sim800_enviarComando("AT",       "OK", 2000);
+  sim800_enviarComando("ATE0",     "OK", 2000);  // sin eco
+  sim800_enviarComando("AT+CMGF=1","OK", 2000);  // modo texto
+  sim800_enviarComando("AT+CSQ",   "OK", 2000);  // señal
+  sim800_enviarComando("AT+CREG?", "OK", 2000);  // registro en red
 
   tInicioPatron = millis();
+
+  Serial.println("\nSistema listo. Midiendo distancia y esperando SOS...");
+  Serial.println("---------------------------------------------------");
 }
 
-//
-// ================== LOOP ==================
-//
+// =======================================================
+// ======================== LOOP =========================
+// =======================================================
 void loop() {
-  procesarGPS();      // Actualiza datos GPS
-  manejarSOS();       // Manejo del botón SOS
-
+  // 1) Medir distancia y aplicar patrón de alerta
   distanciaCM = medirDistanciaCM();
-
-  if (!sosActivo) {
-    actualizarPatronPorDistancia(distanciaCM);
-  } else {
-    // Patrón especial SOS
-    patronActual = {300, 200, true};
-  }
-
+  actualizarPatronPorDistancia(distanciaCM);
   aplicarPatron();
 
+  // 2) Botón SOS: flanco de NO presionado -> presionado
+  bool sosPresionado = (digitalRead(PIN_SOS) == LOW);
+  if (sosPresionado && !sosPrevEstado) {
+    Serial.println("\n[EVENTO] Botón SOS PRESIONADO.");
+
+    // Mensaje de alerta (puedes incluir más info luego: ubicación, etc.)
+    String mensaje = "ALERTA SOS SmartVest: usuario requiere ayuda.";
+    mensaje += " Distancia frente: ";
+    mensaje += String(distanciaCM, 1);
+    mensaje += " cm.";
+
+    if (sim800_enviarSMS(mensaje)) {
+      Serial.println("[OK] SMS SOS ENVIADO correctamente.");
+    } else {
+      Serial.println("[ERROR] No se pudo enviar el SMS SOS.");
+    }
+  }
+  sosPrevEstado = sosPresionado;
+
+  // 3) Monitoreo por Serial (distancia y estado básico)
   Serial.print("Distancia: ");
   Serial.print(distanciaCM);
-  Serial.print(" cm | SOS: ");
-  Serial.println(sosActivo ? "ACTIVO" : "INACTIVO");
+  Serial.println(" cm");
 
-  delay(20);
+  // 4) Mostrar datos que llegan del GPS (tramas NMEA)
+  while (SerialGPS.available()) {
+    char c = SerialGPS.read();
+    Serial.write(c); // verás las tramas tipo $GPGGA, $GPRMC, etc.
+  }
+
+  // 5) Mostrar tráfico del SIM800L (respuestas AT, SMS entrantes, etc.)
+  while (SerialGSM.available()) {
+    char c = SerialGSM.read();
+    Serial.write(c);
+  }
+
+  // 6) (Opcional) Enviar comandos AT manuales al SIM800L desde el PC
+  if (Serial.available()) {
+    char c = Serial.read();
+    SerialGSM.write(c);
+  }
+
+  delay(100); // pequeño respiro para no saturar el puerto serie
 }
 
-//
-// ================== MEDIR DISTANCIA ==================
-//
+// =======================================================
+// =========== LÓGICA DE ULTRASONIDO / ALERTAS ==========
+// =======================================================
+
+// Medir distancia con HC-SR04 (cm)
 float medirDistanciaCM() {
   digitalWrite(PIN_TRIG, LOW);
   delayMicroseconds(2);
@@ -134,29 +187,53 @@ float medirDistanciaCM() {
 
   unsigned long duracion = pulseIn(PIN_ECHO, HIGH, TIMEOUT_ULTRA);
 
-  if (duracion == 0) return 9999.0;
+  if (duracion == 0) {
+    // Sin eco: sin obstáculo o fuera de rango
+    return 9999.0;
+  }
 
-  return (duracion * 0.0343) / 2.0;
+  // Fórmula HC-SR04: distancia (cm) = tiempo(us) * 0.0343 / 2
+  float distancia = (duracion * 0.0343f) / 2.0f;
+  return distancia;
 }
 
-//
-// ================== ACTUALIZAR PATRÓN ==================
-//
+// Elegir patrón de vibración/sonido según distancia
 void actualizarPatronPorDistancia(float d) {
-  if (d > 500 || d > DIST_PRECAUCION) {
-    patronActual = {0, 0, false};
-  } else if (d > DIST_ALERTA) {
-    patronActual = {1000, 200, true};
-  } else if (d > DIST_PELIGRO) {
-    patronActual = {600, 200, true};
-  } else {
-    patronActual = {400, 300, true};
+  PatronAlerta nuevoPatron;
+
+  if (d > 500.0 || d > DIST_PRECAUCION) {
+    // Muy lejos o lectura inválida: sin alerta
+    nuevoPatron = {0, 0, false};
+  }
+  else if (d > DIST_ALERTA) {
+    // Precaución (150~200 cm aprox)
+    nuevoPatron.periodo = 1000;   // 1 s
+    nuevoPatron.onTime  = 200;    // 0.2 s ON
+    nuevoPatron.activo  = true;
+  }
+  else if (d > DIST_PELIGRO) {
+    // Alerta (40~100 cm)
+    nuevoPatron.periodo = 600;    // 0.6 s
+    nuevoPatron.onTime  = 200;    // 0.2 s ON
+    nuevoPatron.activo  = true;
+  }
+  else {
+    // Peligro (< 40 cm)
+    nuevoPatron.periodo = 400;    // 0.4 s
+    nuevoPatron.onTime  = 300;    // 0.3 s ON
+    nuevoPatron.activo  = true;
+  }
+
+  // Actualizar solo si cambió el patrón
+  if (nuevoPatron.periodo != patronActual.periodo ||
+      nuevoPatron.onTime  != patronActual.onTime  ||
+      nuevoPatron.activo  != patronActual.activo) {
+    patronActual = nuevoPatron;
+    tInicioPatron = millis();
   }
 }
 
-//
-// ================== APLICAR PATRÓN ==================
-//
+// Aplicar patrón al buzzer y vibrador (no bloqueante)
 void aplicarPatron() {
   if (!patronActual.activo || patronActual.periodo == 0) {
     digitalWrite(PIN_BUZZER, LOW);
@@ -164,8 +241,8 @@ void aplicarPatron() {
     return;
   }
 
-  unsigned long ahora = millis();
-  unsigned long tCiclo = (ahora - tInicioPatron) % patronActual.periodo;
+  unsigned long ahora   = millis();
+  unsigned long tCiclo  = (ahora - tInicioPatron) % patronActual.periodo;
 
   if (tCiclo < patronActual.onTime) {
     digitalWrite(PIN_BUZZER, HIGH);
@@ -176,76 +253,95 @@ void aplicarPatron() {
   }
 }
 
-//
-// ================== GPS ==================
-//
-void procesarGPS() {
-  while (SerialGPS.available()) {
-    gps.encode(SerialGPS.read());
-  }
-}
+// =======================================================
+// ==================== FUNCIONES SIM800L =================
+// =======================================================
 
-//
-// ================== SOS ==================
-//
-void manejarSOS() {
-  bool presionado = (digitalRead(PIN_SOS) == LOW);
+// Envía comando AT y espera respEsperada en el buffer
+bool sim800_enviarComando(const char* cmd, const char* respEsperada, unsigned long timeout) {
+  // Limpiar buffer previo
+  while (SerialGSM.available()) SerialGSM.read();
 
-  if (presionado && !sosActivo) {
-    sosActivo = true;
-    smsEnviado = false;
-    Serial.println(">>> SOS ACTIVADO");
-  }
+  Serial.print("[CMD] ");
+  Serial.println(cmd);
 
-  if (sosActivo && !smsEnviado) {
-    String mensaje = "⚠️ SOS ACTIVADO\n";
+  SerialGSM.print(cmd);
+  SerialGSM.print("\r");
 
-    if (gps.location.isValid()) {
-      mensaje += "Lat: " + String(gps.location.lat(), 6) + "\n";
-      mensaje += "Lon: " + String(gps.location.lng(), 6) + "\n";
-      mensaje += "https://maps.google.com/?q=" +
-                 String(gps.location.lat(), 6) + "," +
-                 String(gps.location.lng(), 6);
-    } else {
-      mensaje += "Ubicación no disponible aún.";
-    }
+  unsigned long t0 = millis();
+  String buffer = "";
 
-    if (sim800_enviarSMS(mensaje)) {
-      Serial.println(">>> SMS ENVIADO");
-      smsEnviado = true;
-    } else {
-      Serial.println(">>> ERROR enviando SMS");
+  while (millis() - t0 < timeout) {
+    while (SerialGSM.available()) {
+      char c = SerialGSM.read();
+      buffer += c;
+      Serial.write(c);
+
+      if (buffer.indexOf(respEsperada) != -1) {
+        Serial.println();
+        Serial.print("[OK] Respuesta contiene: ");
+        Serial.println(respEsperada);
+        return true;
+      }
+      if (buffer.indexOf("ERROR") != -1) {
+        Serial.println("\n[ERROR] El módulo respondió ERROR.");
+        return false;
+      }
     }
   }
-}
 
-//
-// ================== SIM800L ==================
-//
-bool sim800_enviarComando(const char* cmd, const char* resp, unsigned long timeout) {
-  SerialGSM.println(cmd);
-  unsigned long t = millis();
-
-  while (millis() - t < timeout) {
-    if (SerialGSM.find(const_cast<char*>(resp))) {
-      return true;
-    }
-  }
+  Serial.println();
+  Serial.print("[TIMEOUT] No se encontró '");
+  Serial.print(respEsperada);
+  Serial.println("' en la respuesta.");
   return false;
 }
 
-bool sim800_enviarSMS(String msg) {
-  if (!sim800_enviarComando("AT+CMGF=1", "OK", 2000)) return false;
+// Envía un SMS de texto al número SOS
+bool sim800_enviarSMS(const String &mensaje) {
+  // Asegurar modo texto
+  if (!sim800_enviarComando("AT+CMGF=1", "OK", 2000)) {
+    Serial.println("[ERROR] No se pudo configurar modo texto.");
+    return false;
+  }
 
-  SerialGSM.print("AT+CMGS=\"");
-  SerialGSM.print(NUM_DESTINO);
-  SerialGSM.println("\"");
-  delay(500);
+  // Iniciar SMS
+  {
+    String cmd = String("AT+CMGS=\"") + NUM_DESTINO_SOS + "\"";
+    if (!sim800_enviarComando(cmd.c_str(), ">", 5000)) {
+      Serial.println("[ERROR] No se recibió '>' para escribir el SMS.");
+      return false;
+    }
+  }
 
-  SerialGSM.print(msg);
-  delay(500);
+  // Cuerpo del SMS
+  Serial.println("[INFO] Escribiendo cuerpo del SMS SOS...");
+  SerialGSM.print(mensaje);
 
-  SerialGSM.write(26); // CTRL+Z finaliza SMS
+  // CTRL+Z para enviar
+  SerialGSM.write(26); // ASCII 26 = CTRL+Z
+  Serial.println("[INFO] CTRL+Z enviado, esperando confirmación...");
 
-  return true;
+  // Esperar confirmación
+  unsigned long t0 = millis();
+  String buffer = "";
+  while (millis() - t0 < 20000) { // hasta 20 s
+    while (SerialGSM.available()) {
+      char c = SerialGSM.read();
+      buffer += c;
+      Serial.write(c);
+
+      if (buffer.indexOf("+CMGS:") != -1 || buffer.indexOf("OK") != -1) {
+        Serial.println("\n[OK] SIM800L reporta SMS enviado.");
+        return true;
+      }
+      if (buffer.indexOf("ERROR") != -1) {
+        Serial.println("\n[ERROR] SIM800L reporta error al enviar SMS.");
+        return false;
+      }
+    }
+  }
+
+  Serial.println("\n[TIMEOUT] No hubo confirmación clara de envío.");
+  return false;
 }
