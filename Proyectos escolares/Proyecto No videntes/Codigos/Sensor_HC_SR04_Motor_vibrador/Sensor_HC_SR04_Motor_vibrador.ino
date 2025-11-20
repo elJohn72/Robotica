@@ -1,45 +1,56 @@
 /****************************************************
- * SmartVest - Etapa 1
- * Ultrasonido + Buzzer + Motor vibrador
- * Lógica por distancia (no bloqueante)
+ * SmartVest - Etapa 1.5
+ * Ultrasonido + Buzzer + Vibrador
+ * + Inicialización UART GPS y SIM800L (sin lógica aún)
  ****************************************************/
 
-// ==== PINES (AJUSTAR SEGÚN TU PCB) ====
-const int PIN_TRIG      = 5;   // TRIG del HC-SR04
-const int PIN_ECHO      = 18;   // ECHO del HC-SR04 (con divisor de voltaje HW)
-const int PIN_BUZZER    = 13;  // Salida hacia buzzer (net BUZZ)
-const int PIN_VIBRADOR  = 32;  // Salida hacia transistor del motor (net VIBRA)
+#include <HardwareSerial.h>
 
-// ==== PARÁMETROS DEL SENSOR ====
-const unsigned long TIMEOUT_ULTRA = 30000UL; // 30 ms máx. espera de eco (~5 m)
+// ==== PINES ULTRASONIDO / ALERTAS (según tu esquema) ====
+const int PIN_TRIG      = 5;    // TRIG HC-SR04 -> D5
+const int PIN_ECHO      = 18;   // ECHO HC-SR04 -> D18 (con divisor)
+const int PIN_BUZZER    = 13;   // BUZZ  -> D13
+const int PIN_VIBRADOR  = 32;   // VIBRA -> D32
+
+// ==== PARÁMETROS DEL SENSOR ULTRA ====
+const unsigned long TIMEOUT_ULTRA = 30000UL; // 30 ms
 
 // ==== UMBRALES DE DISTANCIA (cm) ====
-const float DIST_PELIGRO     = 40.0;   // Muy cerca
-const float DIST_ALERTA      = 100.0;  // Cerca
-const float DIST_PRECAUCION  = 200.0;  // Un poco lejos
+const float DIST_PELIGRO     = 40.0;
+const float DIST_ALERTA      = 100.0;
+const float DIST_PRECAUCION  = 200.0;
+
+// ==== UART GPS (NEO-6M) ====
+// En el PCB: TXD del GPS -> D14 (RXD2), RXD del GPS -> D4 (TXD2)
+HardwareSerial SerialGPS(1);    // UART1
+const int GPS_RX = 4;          // ESP32 GPIO14 recibe desde TX del GPS
+const int GPS_TX = 14;           // ESP32 GPIO4 transmite hacia RX del GPS
+
+// ==== UART SIM800L ====
+// En el PCB: TXD del SIM800L -> GPIO16 (RX2), RXD del SIM800L -> GPIO17 (TX2)
+HardwareSerial SerialGSM(2);    // UART2
+const int GSM_RX = 16;          // ESP32 GPIO16 recibe desde TX del SIM800L
+const int GSM_TX = 17;          // ESP32 GPIO17 transmite hacia RX del SIM800L
 
 // ==== ESTRUCTURA DE PATRÓN ====
 struct PatronAlerta {
-  unsigned long periodo;    // Tiempo total de ciclo (ms)
-  unsigned long onTime;     // Tiempo encendido dentro del ciclo (ms)
-  bool activo;              // Si se aplica o no el patrón
+  unsigned long periodo;
+  unsigned long onTime;
+  bool activo;
 };
 
-// Patrón actual aplicado a buzzer y vibrador
 PatronAlerta patronActual = {0, 0, false};
 unsigned long tInicioPatron = 0;
-
-// ==== VARIABLES DE ESTADO ====
 float distanciaCM = 0.0;
 
 void setup() {
   Serial.begin(115200);
   delay(1000);
-  Serial.println("SmartVest - Etapa 1: Ultrasonido + Buzzer + Vibrador");
+  Serial.println("SmartVest - Etapa 1.5");
 
+  // --- Pines ultrasonido / alertas ---
   pinMode(PIN_TRIG, OUTPUT);
   pinMode(PIN_ECHO, INPUT);
-
   pinMode(PIN_BUZZER, OUTPUT);
   pinMode(PIN_VIBRADOR, OUTPUT);
 
@@ -47,46 +58,58 @@ void setup() {
   digitalWrite(PIN_BUZZER, LOW);
   digitalWrite(PIN_VIBRADOR, LOW);
 
+  // --- UART GPS (NEO-6M) ---
+  SerialGPS.begin(9600, SERIAL_8N1, GPS_RX, GPS_TX);
+  Serial.println("GPS UART1: RX=GPIO14, TX=GPIO4");
+
+  // --- UART SIM800L ---
+  SerialGSM.begin(9600, SERIAL_8N1, GSM_RX, GSM_TX);
+  Serial.println("SIM800L UART2: RX=GPIO16, TX=GPIO17");
+
   tInicioPatron = millis();
 }
 
 // ========= LOOP PRINCIPAL =========
 void loop() {
-  // 1. Medir distancia
+  // 1. Medir distancia y actualizar alertas
   distanciaCM = medirDistanciaCM();
-
-  // 2. Actualizar el patrón según la distancia medida
   actualizarPatronPorDistancia(distanciaCM);
-
-  // 3. Aplicar patrón al buzzer y al motor vibrador (no bloqueante)
   aplicarPatron();
 
-  // 4. Monitoreo por Serial
+  // 2. (Opcional) monitoreo por Serial
   Serial.print("Distancia: ");
   Serial.print(distanciaCM);
   Serial.println(" cm");
 
-  delay(50);  // Pequeño delay solo para no saturar el puerto serie
+  // 3. (Test simple) leer si llega algo del SIM800L
+  while (SerialGSM.available()) {
+    char c = SerialGSM.read();
+    Serial.write(c);  // se ve en el monitor serie
+  }
+
+  // 4. (Test simple) leer si llega algo del GPS
+  while (SerialGPS.available()) {
+    char c = SerialGPS.read();
+    Serial.write(c);  // tramas NMEA
+  }
+
+  delay(50);
 }
 
 // ========= FUNCIÓN: MEDIR DISTANCIA =========
 float medirDistanciaCM() {
-  // Pulso de disparo
   digitalWrite(PIN_TRIG, LOW);
   delayMicroseconds(2);
   digitalWrite(PIN_TRIG, HIGH);
   delayMicroseconds(10);
   digitalWrite(PIN_TRIG, LOW);
 
-  // Mide el tiempo del pulso en ECHO
   unsigned long duracion = pulseIn(PIN_ECHO, HIGH, TIMEOUT_ULTRA);
 
   if (duracion == 0) {
-    // No se recibió eco: consideramos que no hay obstáculo detectado
     return 9999.0;
   }
 
-  // Fórmula HC-SR04: distancia (cm) = tiempo(us) * 0.0343 / 2
   float distancia = (duracion * 0.0343) / 2.0;
   return distancia;
 }
@@ -95,61 +118,42 @@ float medirDistanciaCM() {
 void actualizarPatronPorDistancia(float d) {
   PatronAlerta nuevoPatron;
 
-  if (d > 500.0) {
-    // Lectura muy grande / sin objeto
-    nuevoPatron = {0, 0, false};
+  if (d > 500.0 || d > DIST_PRECAUCION) {
+    nuevoPatron = {0, 0, false};    // zona segura o sin lectura
   }
-  else if (d > DIST_PRECAUCION) {
-    // Zona segura
-    nuevoPatron = {0, 0, false};
+  else if (d > DIST_ALERTA) {
+    nuevoPatron = {1000, 200, true}; // precaución
   }
-  else if (d > DIST_ALERTA && d <= DIST_PRECAUCION) {
-    // Zona de precaución (lejos pero presente)
-    nuevoPatron.periodo = 1000;   // 1 segundo de ciclo
-    nuevoPatron.onTime  = 200;    // 200 ms encendido
-    nuevoPatron.activo  = true;
-  }
-  else if (d > DIST_PELIGRO && d <= DIST_ALERTA) {
-    // Zona de alerta (medio cerca)
-    nuevoPatron.periodo = 600;    // 0.6 s
-    nuevoPatron.onTime  = 200;    // 200 ms encendido
-    nuevoPatron.activo  = true;
+  else if (d > DIST_PELIGRO) {
+    nuevoPatron = {600, 200, true};  // alerta
   }
   else {
-    // Zona de peligro (muy cerca)
-    nuevoPatron.periodo = 400;    // 0.4 s
-    nuevoPatron.onTime  = 300;    // 300 ms encendido
-    nuevoPatron.activo  = true;
+    nuevoPatron = {400, 300, true};  // peligro
   }
 
-  // Si el patrón cambió, reiniciamos el tiempo de referencia
   if (nuevoPatron.periodo != patronActual.periodo ||
-      nuevoPatron.onTime  != patronActual.onTime ||
+      nuevoPatron.onTime  != patronActual.onTime  ||
       nuevoPatron.activo  != patronActual.activo) {
-
     patronActual = nuevoPatron;
     tInicioPatron = millis();
   }
 }
 
-// ========= FUNCIÓN: APLICAR PATRÓN A SALIDAS =========
+// ========= FUNCIÓN: APLICAR PATRÓN =========
 void aplicarPatron() {
   if (!patronActual.activo || patronActual.periodo == 0) {
-    // Todo apagado
     digitalWrite(PIN_BUZZER, LOW);
     digitalWrite(PIN_VIBRADOR, LOW);
     return;
   }
 
   unsigned long ahora = millis();
-  unsigned long tiempoDentroDelCiclo = (ahora - tInicioPatron) % patronActual.periodo;
+  unsigned long tCiclo = (ahora - tInicioPatron) % patronActual.periodo;
 
-  if (tiempoDentroDelCiclo < patronActual.onTime) {
-    // Fase ON
+  if (tCiclo < patronActual.onTime) {
     digitalWrite(PIN_BUZZER, HIGH);
     digitalWrite(PIN_VIBRADOR, HIGH);
   } else {
-    // Fase OFF
     digitalWrite(PIN_BUZZER, LOW);
     digitalWrite(PIN_VIBRADOR, LOW);
   }
