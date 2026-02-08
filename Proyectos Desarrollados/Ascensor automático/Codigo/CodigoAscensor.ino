@@ -15,7 +15,7 @@
 #define BTN3 10
 #define BTN4 11
 
-#define FINAL_CARRERA 7  // Pin del final de carrera
+#define FINAL_CARRERA 7
 
 // ---------- VARIABLES ----------
 Servo puerta;
@@ -25,11 +25,12 @@ float pisos[4] = {
   10.4,   // Piso 2
   15.4,  // Piso 3
   22   // Piso 4
-}; // CAMBIAR SEGÚN TU MAQUETA
+};
 float tolerancia = 1.0;
 
-int pisoActual = 0;
+int pisoActual = 3; // Cambiado: empieza en piso 4 (índice 3)
 int pisoDestino = -1;
+unsigned long tiempoUltimaLectura = 0;
 
 // ---------- FUNCIONES ----------
 float leerDistancia() {
@@ -67,13 +68,24 @@ bool llegoAlPiso(float distancia) {
   return abs(distancia - pisos[pisoDestino]) <= tolerancia;
 }
 
-// Función para verificar final de carrera (último piso)
 bool finalDeCarreraActivado() {
-  return digitalRead(FINAL_CARRERA) == LOW;  // Si el switch está presionado
+  return digitalRead(FINAL_CARRERA) == LOW;
+}
+
+// Actualiza pisoActual según la distancia actual
+void actualizarPisoActual(float distancia) {
+  for (int i = 0; i < 4; i++) {
+    if (abs(distancia - pisos[i]) <= tolerancia) {
+      pisoActual = i;
+      return;
+    }
+  }
 }
 
 // ---------- SETUP ----------
 void setup() {
+  Serial.begin(9600); // Para debugging
+  
   pinMode(TRIG, OUTPUT);
   pinMode(ECHO, INPUT);
 
@@ -86,42 +98,48 @@ void setup() {
   pinMode(BTN3, INPUT_PULLUP);
   pinMode(BTN4, INPUT_PULLUP);
 
-  pinMode(FINAL_CARRERA, INPUT_PULLUP);  // Configura pin 7 como entrada
+  pinMode(FINAL_CARRERA, INPUT_PULLUP);
 
   puerta.attach(SERVO_PIN);
-  puerta.write(0); // puerta cerrada
+  puerta.write(0);
 
   motorParar();
 }
 
 // ---------- LOOP ----------
 void loop() {
+  // Detectar botones presionados
+  if (digitalRead(BTN1) == LOW) {
+    pisoDestino = 0;
+    delay(200); // Debounce
+  }
+  if (digitalRead(BTN2) == LOW) {
+    pisoDestino = 1;
+    delay(200);
+  }
+  if (digitalRead(BTN3) == LOW) {
+    pisoDestino = 2;
+    delay(200);
+  }
+  if (digitalRead(BTN4) == LOW) {
+    pisoDestino = 3;
+    delay(200);
+  }
 
-  if (digitalRead(BTN1) == LOW) pisoDestino = 0;
-  if (digitalRead(BTN2) == LOW) pisoDestino = 1;
-  if (digitalRead(BTN3) == LOW) pisoDestino = 2;
-  if (digitalRead(BTN4) == LOW) pisoDestino = 3;
-
+  // Si no hay destino o ya estamos en el piso, parar
   if (pisoDestino == -1 || pisoDestino == pisoActual) {
     motorParar();
     return;
   }
 
-  // Verifica si el final de carrera está activado (último piso)
-  if (finalDeCarreraActivado() && pisoDestino == 3) {
-    motorParar();
-    pisoActual = 3;
-    pisoDestino = -1;
-
-    puerta.write(90);      // abrir puerta
-    delay(2500);
-    puerta.write(0);       // cerrar puerta
-    return;
-  }
-
+  // Leer distancia
   float distancia = leerDistancia();
   if (distancia < 0) return;
 
+  // Actualizar posición actual del ascensor
+  actualizarPisoActual(distancia);
+
+  // Si llegó al piso destino
   if (llegoAlPiso(distancia)) {
     motorParar();
     pisoActual = pisoDestino;
@@ -133,6 +151,19 @@ void loop() {
     return;
   }
 
+  // Verificar final de carrera solo para piso 4
+  if (finalDeCarreraActivado() && pisoDestino == 3) {
+    motorParar();
+    pisoActual = 3;
+    pisoDestino = -1;
+
+    puerta.write(90);
+    delay(2500);
+    puerta.write(0);
+    return;
+  }
+
+  // Mover hacia el piso destino
   if (distancia > pisos[pisoDestino]) {
     motorSubir();
   } else {
