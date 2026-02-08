@@ -15,14 +15,16 @@
 #define BTN3 10
 #define BTN4 11
 
+#define FINAL_CARRERA 7  // Pin del final de carrera
+
 // ---------- VARIABLES ----------
 Servo puerta;
 
 float pisos[4] = {
-  2.4,   // Piso 1
-  6.4,   // Piso 2
-  13.4,  // Piso 3
-  19   // Piso 4
+  1.2,   // Piso 1
+  10.4,   // Piso 2
+  15.4,  // Piso 3
+  22   // Piso 4
 }; // CAMBIAR SEGÚN TU MAQUETA
 float tolerancia = 1.0;
 
@@ -65,6 +67,11 @@ bool llegoAlPiso(float distancia) {
   return abs(distancia - pisos[pisoDestino]) <= tolerancia;
 }
 
+// Función para verificar final de carrera (último piso)
+bool finalDeCarreraActivado() {
+  return digitalRead(FINAL_CARRERA) == LOW;  // Si el switch está presionado
+}
+
 // ---------- SETUP ----------
 void setup() {
   pinMode(TRIG, OUTPUT);
@@ -78,6 +85,8 @@ void setup() {
   pinMode(BTN2, INPUT_PULLUP);
   pinMode(BTN3, INPUT_PULLUP);
   pinMode(BTN4, INPUT_PULLUP);
+
+  pinMode(FINAL_CARRERA, INPUT_PULLUP);  // Configura pin 7 como entrada
 
   puerta.attach(SERVO_PIN);
   puerta.write(0); // puerta cerrada
@@ -95,6 +104,18 @@ void loop() {
 
   if (pisoDestino == -1 || pisoDestino == pisoActual) {
     motorParar();
+    return;
+  }
+
+  // Verifica si el final de carrera está activado (último piso)
+  if (finalDeCarreraActivado() && pisoDestino == 3) {
+    motorParar();
+    pisoActual = 3;
+    pisoDestino = -1;
+
+    puerta.write(90);      // abrir puerta
+    delay(2500);
+    puerta.write(0);       // cerrar puerta
     return;
   }
 
