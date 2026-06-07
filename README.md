@@ -1,57 +1,47 @@
-# 🤖 Curso de Robótica con Arduino - Repositorio de Códigos 🚀  
+# Robótica AJTecnology — Repo de proyectos
 
-Bienvenido al repositorio oficial de **Códigos de los Cursos de Robótica con Arduino**. Aquí encontrarás los programas organizados por niveles y temáticas, listos para ser usados y modificados en tus proyectos.  
+**GitHub:** https://github.com/elJohn72/Robotica  
+**Catálogo (agentes + MCP):** [`catalog/projects.json`](catalog/projects.json) · ver [`catalog/README.md`](catalog/README.md)
 
----
+## Estructura 2026 (escalable)
 
-## 📂 **Estructura del Repositorio**  
+| Ruta | Contenido |
+|------|-----------|
+| `catalog/` | Inventario JSON + mapa legacy |
+| `proyectos/` | **Nuevos** proyectos por categoría (kits, competencia, comunidad…) |
+| `proyectos/_plantilla/` | Plantilla README + FICHA |
+| `Proyectos AJTecnology/` | Proyectos por módulo del programa (legacy) |
+| `Proyectos Desarrollados/` | Laboratorio / prototipos (legacy) |
+| `Proyectos escolares/` | Pitch escolar, EcoGrow, SmartVest (legacy) |
+| `Codigos ejemplos de codigos cursos robotica/` | Ejemplos de cursos |
 
-📌 **🔰 Curso Básico**  
-> Introducción a Arduino, componentes electrónicos y primeros proyectos.  
+### Categorías del catálogo
 
-📂 `curso_basico/`  
-- `01_led_basico.ino` → Encender un LED.  
-- `02_led_parpadeo.ino` → Hacer parpadear un LED.  
-- `03_led_boton.ino` → Encender un LED con un botón.  
-- `04_sensor_luz.ino` → Control de luz con LDR.  
-- `05_motor_dc.ino` → Control de un motor DC.  
+`kit_venta` · `competencia` · `comunidad` · `curso_modulo` · `club_bandera` · `escolar` · `laboratorio`
 
-📌 **⚙️ Curso Intermedio**  
-> Sensores, motores, comunicación y proyectos más complejos.  
+### Gobernanza (workspace AJENZA en SSD)
 
-📂 `curso_intermedio/`  
-- `06_servo_motor.ino` → Control de un servomotor.  
-- `07_ultrasonico.ino` → Medir distancia con HC-SR04.  
-- `08_robot_basico.ino` → Construcción de un robot móvil.  
-- `09_bluetooth.ino` → Comunicación con Bluetooth HC-05.  
-- `10_control_robot.ino` → Controlar el robot con Bluetooth.  
-
-📌 **🚀 Curso Avanzado**  
-> Automatización, inteligencia artificial y proyectos finales.  
-
-📂 `curso_avanzado/`  
-- `11_sensor_dht11.ino` → Medir temperatura y humedad.  
-- `12_codigo_secreto.ino` → Desactivar una alarma con código.  
-- `13_domotica.ino` → Control de luces y dispositivos con Arduino.  
-- `14_robot_autonomo.ino` → Robot que evita obstáculos.  
-- `15_proyecto_final.ino` → Integración de todos los módulos en un sistema autónomo.  
+- Agente: `08_AJTecnology_Operacion`
+- MCP Cursor: `ajenza-robotics-projects`
+- Procedimiento: ver SSD `00_AJENZA_Agentes/08_AJTecnology_Operacion/procedimientos/catalogo_proyectos_robotica.md`
 
 ---
 
-## 🛠 **Requisitos**  
+## Histórico — descripción cursos Arduino
 
-Antes de comenzar, asegúrate de tener instalado:  
-✅ **Arduino IDE** ([Descargar aquí](https://www.arduino.cc/en/software)).  
-✅ Una placa **Arduino Nano / Uno / Mega**.  
-✅ **Componentes básicos**: LEDs, resistencias, botones, sensores, motores.  
-✅ **Tinkercad** para simulaciones ([Ir a Tinkercad](https://www.tinkercad.com/)).  
+*(README anterior — algunos paths `curso_basico/` pueden no existir aún en disco; priorizar catálogo y carpetas listadas arriba.)*
 
----
+Bienvenido al repositorio de **códigos y proyectos de Robótica AJTecnology**.
 
-## 🚀 **Cómo usar los códigos**  
+### Requisitos
 
-### 1️⃣ **Clonar el repositorio**  
-Abre tu terminal y ejecuta:  
+- Arduino IDE
+- Placa Arduino / ESP32 según proyecto
+- Componentes del BOM en cada `FICHA.md`
+
+### Clonar
+
 ```sh
-git clone https://github.com/tuusuario/curso-robotica.git
-cd curso-robotica
+git clone https://github.com/elJohn72/Robotica.git
+cd Robotica
+```
