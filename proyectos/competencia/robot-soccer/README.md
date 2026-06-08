@@ -1,7 +1,20 @@
 # Robot Soccer
 
-**Estado:** planificado · **Categoría:** competencia
+> Ver **`FICHA.md`**. ID catálogo: `robot-soccer`
 
-Línea soccer / robocup escolar. Plantilla: `proyectos/_plantilla/`
+**Estado:** borrador · **Categoría:** competencia
 
-Catálogo: `robot-soccer`
+Línea soccer / robocup escolar. Plantilla: `proyectos/_plantilla/`.
+
+## Estructura objetivo
+
+```
+codigo/       # Firmware / visión
+hardware/     # Chasis, kicker, sensores
+media/        # Cancha, partidos
+docs/         # Reglamento torneo
+```
+
+## Catálogo
+
+`catalog/projects.json` → `robot-soccer`

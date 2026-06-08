@@ -1,7 +1,20 @@
 # Mini Sumo
 
-**Estado:** planificado · **Categoría:** competencia
+> Ver **`FICHA.md`**. ID catálogo: `mini-sumo`
 
-Robot de combate mini sumo. Plantilla: `proyectos/_plantilla/`
+**Estado:** borrador · **Categoría:** competencia
 
-Catálogo: `mini-sumo`
+Robot de combate mini sumo. Plantilla: `proyectos/_plantilla/`.
+
+## Estructura objetivo
+
+```
+codigo/       # Firmware
+hardware/     # Chasis, sensores, BOM
+media/        # Dohyo, combates
+docs/         # Reglamento, estrategia
+```
+
+## Catálogo
+
+`catalog/projects.json` → `mini-sumo`

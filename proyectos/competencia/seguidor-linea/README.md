@@ -1,7 +1,20 @@
 # Seguidor de línea
 
-**Estado:** planificado · **Categoría:** competencia
+> Ver **`FICHA.md`**. ID catálogo: `seguidor-linea`
 
-Proyecto de torneo (QTR / PID). Usar plantilla en `proyectos/_plantilla/` al iniciar desarrollo.
+**Estado:** borrador · **Categoría:** competencia
 
-Ver catálogo: `catalog/projects.json` → `seguidor-linea`
+Robot de torneo (seguimiento de línea, QTR / PID). Desarrollo en esta carpeta; plantilla base en `proyectos/_plantilla/`.
+
+## Estructura objetivo
+
+```
+codigo/       # Firmware
+hardware/     # Esquemático, BOM, STL
+media/        # Pista, pruebas, torneo
+docs/         # Reglamento, notas estrategia
+```
+
+## Catálogo
+
+`catalog/projects.json` → `seguidor-linea`
